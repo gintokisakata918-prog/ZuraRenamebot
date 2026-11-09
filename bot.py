@@ -241,18 +241,44 @@ async def rename_file_handler(client, message):
             else:
                 log.warning("FFmpeg not found; custom metadata skipped")
 
-        # A saved custom thumbnail always wins. Otherwise extract one automatically from video files.
-        thumb_id = await settings.get_value(user_id, "thumb_file_id")
+        # Priority: user's custom thumbnail > thumbnail attached to incoming Telegram file > FFmpeg preview.
         thumb_path = None
+        thumb_id = await settings.get_value(user_id, "thumb_file_id")
         if thumb_id:
             try:
-                thumb_path = await client.download_media(thumb_id, file_name=f"{work_dir}/custom_thumb.jpg")
+                thumb_path = await client.download_media(
+                    thumb_id, file_name=os.path.join(work_dir, "custom_thumb.jpg")
+                )
             except Exception:
                 log.warning("Could not download saved thumbnail for user %s", user_id, exc_info=True)
-        if not thumb_path and shutil.which("ffmpeg") and (message.video or (message.document and (media.mime_type or "").startswith("video/"))):
+
+        if not thumb_path:
+            original_thumbs = getattr(media, "thumbs", None) or []
+            if original_thumbs:
+                # Choose the largest thumbnail Telegram supplied with the original media.
+                original_thumb = max(
+                    original_thumbs,
+                    key=lambda item: (getattr(item, "width", 0) or 0) * (getattr(item, "height", 0) or 0)
+                )
+                try:
+                    thumb_path = await client.download_media(
+                        original_thumb.file_id, file_name=os.path.join(work_dir, "original_thumb.jpg")
+                    )
+                    if thumb_path and os.path.getsize(thumb_path) > 200 * 1024:
+                        os.remove(thumb_path)
+                        thumb_path = None
+                except Exception:
+                    log.warning("Could not download original Telegram thumbnail", exc_info=True)
+                    thumb_path = None
+
+        if not thumb_path and shutil.which("ffmpeg") and (
+            message.video or (message.document and (media.mime_type or "").startswith("video/"))
+        ):
             try:
                 from media import generate_thumbnail
-                thumb_path = str(await generate_thumbnail(renamed_path, os.path.join(work_dir, "auto_thumb.jpg")))
+                thumb_path = str(await generate_thumbnail(
+                    renamed_path, os.path.join(work_dir, "auto_thumb.jpg")
+                ))
             except Exception:
                 log.warning("Automatic thumbnail generation failed for user %s", user_id, exc_info=True)
 
