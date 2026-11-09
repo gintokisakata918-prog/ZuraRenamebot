@@ -57,6 +57,8 @@ async def start_handler(client, message):
         "Then send a document, video, audio, or animation.\n\n"
         "Placeholders: {filename}, {ext}, {user_id}, {date}, {time}\n"
         "Commands:\n/myformat — show format\n/resetformat — reset format\n"
+        "/metadata Subtitle | Audio | Author — set media metadata\n"
+        "/mymetadata — show metadata\n/delmetadata — clear metadata\n"
         "/setcaption text — set output caption\n/delcaption — remove custom caption\n"
         "/setthumb — reply to a photo with this command\n/delthumb — remove thumbnail\n"
         "/setreplace OLD | NEW — replace text in filenames\\n"
@@ -87,6 +89,42 @@ async def my_format_handler(client, message):
 async def reset_format_handler(client, message):
     await settings.set_value(message.from_user.id, "rename_template", None)
     await message.reply_text("Rename format reset.")
+
+@app.on_message(filters.private & filters.command("metadata"))
+async def set_metadata_handler(client, message):
+    raw = message.text.split(maxsplit=1)[1] if len(message.command) > 1 else ""
+    parts = [part.strip() for part in raw.split("|")]
+    if len(parts) != 3:
+        return await message.reply_text(
+            "Usage:\n/metadata Subtitle | Audio | Author\n"
+            "Example:\n/metadata Sᴜʙᴛɪᴛʟᴇ | Aᴜᴅɪᴏ | NETQUBO"
+        )
+    subtitle, audio, author = parts
+    await settings.set_value(message.from_user.id, "meta_subtitle", subtitle or None)
+    await settings.set_value(message.from_user.id, "meta_audio", audio or None)
+    await settings.set_value(message.from_user.id, "meta_author", author or None)
+    await message.reply_text(
+        f"Metadata saved:\nSubtitle: {subtitle or 'Not set'}\n"
+        f"Audio: {audio or 'Not set'}\nAuthor: {author or 'Not set'}"
+    )
+
+@app.on_message(filters.private & filters.command("mymetadata"))
+async def my_metadata_handler(client, message):
+    subtitle = await settings.get_value(message.from_user.id, "meta_subtitle")
+    audio = await settings.get_value(message.from_user.id, "meta_audio")
+    author = await settings.get_value(message.from_user.id, "meta_author")
+    if not any((subtitle, audio, author)):
+        return await message.reply_text("No metadata settings saved. Use /metadata Subtitle | Audio | Author.")
+    await message.reply_text(
+        f"Current metadata:\nSubtitle: {subtitle or 'Not set'}\n"
+        f"Audio: {audio or 'Not set'}\nAuthor: {author or 'Not set'}"
+    )
+
+@app.on_message(filters.private & filters.command("delmetadata"))
+async def delete_metadata_handler(client, message):
+    for key in ("meta_subtitle", "meta_audio", "meta_author"):
+        await settings.set_value(message.from_user.id, key, None)
+    await message.reply_text("Custom metadata settings removed.")
 
 @app.on_message(filters.private & filters.command("setcaption"))
 async def set_caption_handler(client, message):
@@ -190,7 +228,19 @@ async def rename_file_handler(client, message):
         caption = caption_template.format(filename=os.path.splitext(new_name)[0], ext=os.path.splitext(new_name)[1].lstrip("."), user_id=user_id) if caption_template else (message.caption or "")
         if replace_from and caption:
             caption = __import__("re").sub(__import__("re").escape(replace_from), lambda _: replace_to or "", caption, flags=__import__("re").IGNORECASE)
-        thumb_id = await settings.get_value(user_id, "thumb_file_id")
+        meta_subtitle = await settings.get_value(user_id, "meta_subtitle")
+        meta_audio = await settings.get_value(user_id, "meta_audio")
+        meta_author = await settings.get_value(user_id, "meta_author")
+        if any((meta_subtitle, meta_audio, meta_author)):
+            if shutil.which("ffmpeg"):
+                from media import write_metadata
+                metadata_path = os.path.join(work_dir, "metadata_" + new_name)
+                await write_metadata(renamed_path, metadata_path,
+                                     subtitle=meta_subtitle, audio=meta_audio, author=meta_author)
+                os.replace(metadata_path, renamed_path)
+            else:
+                log.warning("FFmpeg not found; custom metadata skipped")
+                thumb_id = await settings.get_value(user_id, "thumb_file_id")
         thumb_path = None
         if thumb_id:
             try:
