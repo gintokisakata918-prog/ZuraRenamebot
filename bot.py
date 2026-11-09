@@ -59,6 +59,8 @@ async def start_handler(client, message):
         "Commands:\n/myformat — show format\n/resetformat — reset format\n"
         "/setcaption text — set output caption\n/delcaption — remove custom caption\n"
         "/setthumb — reply to a photo with this command\n/delthumb — remove thumbnail\n"
+        "/setreplace OLD | NEW — replace text in filenames\\n"
+        "/myreplace — show replacement\\n/delreplace — remove replacement\\n"
         "/cancel — cancel current rename job"
     )
 
@@ -110,6 +112,32 @@ async def delete_thumb_handler(client, message):
     await settings.set_value(message.from_user.id, "thumb_file_id", None)
     await message.reply_text("Custom thumbnail removed.")
 
+@app.on_message(filters.private & filters.command("setreplace"))
+async def set_replace_handler(client, message):
+    raw = message.text.split(maxsplit=1)[1] if len(message.command) > 1 else ""
+    if "|" not in raw:
+        return await message.reply_text("Usage: /setreplace OLD TEXT | NEW TEXT\\nExample: /setreplace @ASKOREANDRAMA | @MYCHANNEL")
+    old, new = (part.strip() for part in raw.split("|", 1))
+    if not old:
+        return await message.reply_text("The text to find cannot be empty.")
+    await settings.set_value(message.from_user.id, "replace_from", old)
+    await settings.set_value(message.from_user.id, "replace_to", new)
+    await message.reply_text(f"Filename replacement saved:\\n{old} → {new}\\nIt will apply to matching filenames you send.")
+
+@app.on_message(filters.private & filters.command("myreplace"))
+async def my_replace_handler(client, message):
+    old = await settings.get_value(message.from_user.id, "replace_from")
+    new = await settings.get_value(message.from_user.id, "replace_to", "")
+    if not old:
+        return await message.reply_text("No filename replacement is set. Use /setreplace OLD | NEW.")
+    await message.reply_text(f"Current replacement:\\n{old} → {new}")
+
+@app.on_message(filters.private & filters.command("delreplace"))
+async def delete_replace_handler(client, message):
+    await settings.set_value(message.from_user.id, "replace_from", None)
+    await settings.set_value(message.from_user.id, "replace_to", None)
+    await message.reply_text("Filename replacement removed.")
+
 @app.on_message(filters.private & filters.command("cancel"))
 async def cancel_handler(client, message):
     task = ACTIVE.get(message.from_user.id)
@@ -131,6 +159,12 @@ async def rename_file_handler(client, message):
     if not media:
         return
     original_name = getattr(media, "file_name", None) or f"zura_file_{media.file_unique_id}"
+    replace_from = await settings.get_value(user_id, "replace_from")
+    replace_to = await settings.get_value(user_id, "replace_to", "")
+    if replace_from:
+        stem, extension = os.path.splitext(original_name)
+        stem = __import__("re").sub(__import__("re").escape(replace_from), lambda _: replace_to or "", stem, flags=__import__("re").IGNORECASE)
+        original_name = stem + extension
     try:
         new_name = build_filename(template, original_name, user_id)
     except ValueError as exc:
