@@ -5,21 +5,28 @@ class UserSettings:
         self.client = AsyncIOMotorClient(uri, serverSelectionTimeoutMS=10000)
         self.collection = self.client[database_name]["user_settings"]
 
-    async def set_template(self, user_id: int, template: str):
-        result = await self.collection.update_one(
-            {"_id": int(user_id)}, {"$set": {"rename_template": template}}, upsert=True
+    async def ensure_user(self, user_id: int):
+        await self.collection.update_one({"_id": int(user_id)}, {"$setOnInsert": {}}, upsert=True)
+
+    async def set_value(self, user_id: int, key: str, value):
+        if key.startswith("$") or "." in key:
+            raise ValueError("Invalid setting key")
+        await self.collection.update_one(
+            {"_id": int(user_id)}, {"$set": {key: value}}, upsert=True
         )
-        if result.matched_count == 0 and result.upserted_id is None:
-            raise RuntimeError("MongoDB did not persist the rename template")
+
+    async def get_value(self, user_id: int, key: str, default=None):
+        user = await self.collection.find_one({"_id": int(user_id)}, {key: 1})
+        return user.get(key, default) if user else default
+
+    async def set_template(self, user_id: int, template: str):
+        await self.set_value(user_id, "rename_template", template)
 
     async def get_template(self, user_id: int):
-        user = await self.collection.find_one({"_id": int(user_id)}, {"rename_template": 1})
-        return user.get("rename_template") if user else None
+        return await self.get_value(user_id, "rename_template")
 
     async def reset_template(self, user_id: int):
-        await self.collection.update_one(
-            {"_id": int(user_id)}, {"$unset": {"rename_template": ""}}, upsert=True
-        )
+        await self.set_value(user_id, "rename_template", None)
 
     async def close(self):
         self.client.close()

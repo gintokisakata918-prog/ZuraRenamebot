@@ -1,25 +1,31 @@
 # ZuraRenamebot
 
-An independently implemented Telegram auto-rename bot built with Pyrogram and MongoDB.
+An independently implemented Telegram auto-rename bot using Pyrogram and MongoDB.
 
-## Current features
-- Per-user rename templates with safe filename sanitization.
-- Preserves the original file extension.
-- Supports documents, videos, audio and animations.
-- MongoDB-backed user settings.
-- Optional FFmpeg helpers for inspecting media and writing container metadata without re-encoding.
+## Features
+- Per-user filename templates and extension preservation.
+- Documents, videos, audio and animations.
+- Custom output caption: `/setcaption your caption`; use `/delcaption` to clear.
+- Custom thumbnail: reply to a photo with `/setthumb`; use `/delthumb` to clear.
+- Download/upload progress and per-user job cancellation with `/cancel`.
+- Optional FFmpeg helpers in `media.py` for media inspection and metadata remuxing.
 
-## Template placeholders
-`{filename}`, `{ext}`, `{user_id}`, `{date}`, and `{time}`.
+## Commands
+- `/start`, `/help`
+- `/autorenname {filename}_{date}.{ext}`
+- `/myformat`, `/resetformat`
+- `/setcaption text`, `/delcaption`
+- Reply to a photo with `/setthumb`; `/delthumb`
+- `/cancel`
+
+## Placeholders
+`{filename}`, `{ext}`, `{user_id}`, `{date}`, `{time}`.
 
 ## Setup
-1. Copy `.env.example` to `.env` and fill in Telegram credentials and MongoDB URI.
+1. Copy `.env.example` to `.env` and fill Telegram credentials and MongoDB URI.
 2. Install dependencies: `pip install -r requirements.txt`.
 3. Run: `python bot.py`.
 
-Install FFmpeg (including ffprobe) on the host to use the optional media helper module.
+Install FFmpeg and ffprobe if you plan to use the optional helper module. Telegram bot file-size limits depend on the API environment and are not bypassed by this project.
 
-This project is independently implemented. Test with your deployment environment and Telegram file-size limits before production use.
-
-## License
-MIT. See [LICENSE](LICENSE).
+This is an active development version. Test it with your deployment environment before public use.
