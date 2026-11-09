@@ -25,7 +25,7 @@ An independently implemented Telegram auto-rename bot using Pyrogram and MongoDB
 ## Placeholders
 `{filename}`, `{ext}`, `{user_id}`, `{date}`, `{time}`.
 
-## Setup
+## Google Colab performance\n- The bot uses `TgCrypto` (listed in requirements) for faster MTProto encryption when its wheel installs successfully.\n- Default Colab download/temp folder is `/content/zura_downloads` (local runtime disk).\n- Pyrogram defaults are tuned to 16 update workers and up to 4 concurrent transfers. These settings help with multiple simultaneous transfers; they do not guarantee a faster single-file transfer.\n- Optional environment variables: `PYROGRAM_WORKERS` (4–32) and `MAX_CONCURRENT_TRANSMISSIONS` (1–8).\n- Actual throughput depends mainly on Colab runtime/network, Telegram DC, file size and current load. Keep the Colab runtime connected while the bot is running.\n\n## Setup
 1. Copy `.env.example` to `.env` and fill Telegram credentials and MongoDB URI.
 2. Install dependencies: `pip install -r requirements.txt`.
 3. Run: `python bot.py`.

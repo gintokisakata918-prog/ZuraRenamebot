@@ -20,4 +20,6 @@ class Config:
     BOT_TOKEN = os.environ["BOT_TOKEN"]
     DB_URL = os.environ["DB_URL"]
     DB_NAME = os.getenv("DB_NAME", "zura_rename")
-    DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "downloads")
+    DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "/content/zura_downloads" if os.path.isdir("/content") else "downloads")
+    WORKERS = max(4, min(32, int(os.getenv("PYROGRAM_WORKERS", "16"))))
+    MAX_CONCURRENT_TRANSMISSIONS = max(1, min(8, int(os.getenv("MAX_CONCURRENT_TRANSMISSIONS", "4"))))
