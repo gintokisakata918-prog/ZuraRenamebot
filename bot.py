@@ -152,9 +152,8 @@ async def rename_file_handler(client, message):
     user_id = message.from_user.id
     if user_id in ACTIVE and not ACTIVE[user_id].done():
         return await message.reply_text("A job is already running. Use /cancel first.")
-    template = await settings.get_value(user_id, "rename_template")
-    if not template:
-        return await message.reply_text("Set a rename format first: /autorenname {filename}.{ext}")
+    # If the user has not chosen a custom format, preserve the original filename automatically.
+    template = await settings.get_value(user_id, "rename_template") or "{filename}.{ext}"
     media = message.document or message.video or message.audio or message.animation
     if not media:
         return
