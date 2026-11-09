@@ -22,6 +22,7 @@ app = Client("zura_rename", api_id=Config.API_ID, api_hash=Config.API_HASH,
 settings = UserSettings(Config.DB_URL, Config.DB_NAME)
 MEDIA_FILTER = filters.document | filters.video | filters.audio | filters.animation
 ACTIVE = {}
+MERGE_SESSIONS = {}
 
 def human(size):
     size = float(size or 0)
@@ -65,7 +66,7 @@ async def start_handler(client, message):
         "/setthumb — reply to a photo with this command\n/delthumb — remove thumbnail\n"
         "/setreplace OLD | NEW — replace text in filenames\\n"
         "/myreplace — show replacement\\n/delreplace — remove replacement\\n"
-        "/cancel — cancel current rename job"
+        "/merge — start merging video parts\n/done — merge and upload\n/cancel — cancel job or merge mode"
     )
 
 @app.on_message(filters.private & filters.command(["autorenname", "autorename"]))
@@ -205,12 +206,98 @@ async def delete_replace_handler(client, message):
 
 @app.on_message(filters.private & filters.command("cancel"))
 async def cancel_handler(client, message):
-    task = ACTIVE.get(message.from_user.id)
+    uid = message.from_user.id
+    if uid in MERGE_SESSIONS and uid not in ACTIVE:
+        MERGE_SESSIONS.pop(uid, None)
+        return await message.reply_text("Merge mode cancelled.")
+    task = ACTIVE.get(uid)
     if task and not task.done():
         task.cancel()
         await message.reply_text("Cancellation requested.")
     else:
-        await message.reply_text("No active rename job.")
+        await message.reply_text("No active job.")
+
+
+@app.on_message(filters.private & filters.command("merge"))
+async def merge_start_handler(client, message):
+    uid = message.from_user.id
+    if uid in ACTIVE and not ACTIVE[uid].done():
+        return await message.reply_text("Another task is running. Use /cancel first.")
+    MERGE_SESSIONS[uid] = []
+    await message.reply_text("Merge mode ON. Send video parts one by one in the required order.\nWhen finished, send /done. Use /cancel to stop.\nVideos must have compatible streams/codecs.")
+
+@app.on_message(filters.private & filters.command("done"))
+async def merge_done_handler(client, message):
+    uid = message.from_user.id
+    items = MERGE_SESSIONS.get(uid)
+    if items is None:
+        return await message.reply_text("Pehle /merge bhejo.")
+    if len(items) < 2:
+        return await message.reply_text("Merge ke liye kam se kam 2 video files bhejo.")
+    ACTIVE[uid] = asyncio.current_task()
+    work_dir = tempfile.mkdtemp(prefix="zura_merge_", dir=Config.DOWNLOAD_DIR)
+    status = await message.reply_text(f"Preparing {len(items)} files for merge…")
+    started, last = time.monotonic(), [0.0]
+    try:
+        from merge import merge_videos
+        local_files = []
+        for index, source_message in enumerate(items, 1):
+            path = await client.download_media(
+                source_message, file_name=os.path.join(work_dir, f"part_{index:03d}.bin"),
+                progress=lambda current, total: update_progress(status, f"Downloading part {index}/{len(items)}", current, total, started, last)
+            )
+            if not path or not os.path.isfile(path):
+                raise RuntimeError(f"Could not download part {index}")
+            local_files.append(path)
+        first_media = items[0].video or items[0].document
+        original_name = getattr(first_media, "file_name", None) or "merged_video.mkv"
+        stem, ext = os.path.splitext(original_name)
+        ext = ext or ".mkv"
+        template = await settings.get_value(uid, "rename_template") or "{filename}.{ext}"
+        output_name = build_filename(template, f"{stem}_merged{ext}", uid)
+        replace_from = await settings.get_value(uid, "replace_from")
+        replace_to = await settings.get_value(uid, "replace_to", "")
+        if replace_from:
+            import re
+            base, suffix = os.path.splitext(output_name)
+            output_name = re.sub(re.escape(replace_from), lambda _: replace_to or "", base, flags=re.IGNORECASE).strip() + suffix
+        output_path = os.path.join(work_dir, output_name)
+        await status.edit_text("Merging video parts…")
+        await merge_videos(local_files, output_path)
+        caption = await settings.get_value(uid, "caption")
+        if caption:
+            caption = caption.format(filename=os.path.splitext(output_name)[0], ext=os.path.splitext(output_name)[1].lstrip("."), user_id=uid)
+        started, last = time.monotonic(), [0.0]
+        await status.edit_text("Uploading merged video…")
+        await client.send_document(
+            chat_id=message.chat.id, document=output_path, caption=caption or None,
+            reply_to_message_id=message.id,
+            progress=lambda current, total: update_progress(status, "Uploading merged file", current, total, started, last)
+        )
+        await status.delete()
+    except asyncio.CancelledError:
+        try: await status.edit_text("Merge cancelled.")
+        except Exception: pass
+        raise
+    except Exception as exc:
+        log.exception("Merge failed for user %s", uid)
+        try: await status.edit_text(f"Merge failed: {str(exc)[:650]}\nCheck that all parts have compatible codecs and streams.")
+        except Exception: pass
+    finally:
+        MERGE_SESSIONS.pop(uid, None)
+        ACTIVE.pop(uid, None)
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+@app.on_message(filters.private & MEDIA_FILTER)
+async def merge_collect_handler(client, message):
+    uid = message.from_user.id
+    if uid not in MERGE_SESSIONS:
+        return
+    media = message.video or message.document
+    if not media or (message.document and not (media.mime_type or "").startswith("video/")):
+        return await message.reply_text("Merge mode mein sirf video files bhejo.")
+    MERGE_SESSIONS[uid].append(message)
+    await message.reply_text(f"Added part {len(MERGE_SESSIONS[uid])}. Send next video or /done.")
 
 @app.on_message(filters.private & MEDIA_FILTER)
 async def rename_file_handler(client, message):

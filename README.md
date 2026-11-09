@@ -9,12 +9,19 @@ An independently implemented Telegram auto-rename bot using Pyrogram and MongoDB
 - Custom thumbnail: reply to a photo with `/setthumb`; use `/delthumb` to clear.\n- If no custom thumbnail is saved, FFmpeg automatically extracts a JPEG thumbnail from video files when available.\n- Download/upload progress and per-user job cancellation with `/cancel`.\n- Case-insensitive filename text replacement: `/setreplace OLD | NEW`, `/myreplace`, `/delreplace`.
 - Optional FFmpeg helpers in `media.py` for media inspection and metadata remuxing.
 
+## Merge videos
+1. Send `/merge` to start a merge session.
+2. Send at least two video files in the order you want.
+3. Send `/done` to join and upload, or `/cancel` to stop.
+
+The merge uses FFmpeg stream-copy without re-encoding, so all parts must have compatible codecs, resolution, frame rate and audio/subtitle streams.
+
 ## Commands
 - `/start`, `/help`
 - `/autorenname {filename}_{date}.{ext}`
 - `/myformat`, `/resetformat`
 - `/setcaption text`, `/delcaption`\n- Reply to a photo with `/setthumb`; `/delthumb`
-- `/setreplace OLD | NEW`, `/myreplace`, `/delreplace`\n- `/cancel`
+- `/setreplace OLD | NEW`, `/myreplace`, `/delreplace`\n- `/merge`, `/done`, `/cancel`
 
 ## Metadata commands
 - `/metadata` toggles metadata processing; `/metadata on` and `/metadata off` set it explicitly.
