@@ -161,12 +161,14 @@ async def rename_file_handler(client, message):
     original_name = getattr(media, "file_name", None) or f"zura_file_{media.file_unique_id}"
     replace_from = await settings.get_value(user_id, "replace_from")
     replace_to = await settings.get_value(user_id, "replace_to", "")
-    if replace_from:
-        stem, extension = os.path.splitext(original_name)
-        stem = __import__("re").sub(__import__("re").escape(replace_from), lambda _: replace_to or "", stem, flags=__import__("re").IGNORECASE)
-        original_name = stem + extension
     try:
         new_name = build_filename(template, original_name, user_id)
+        # Apply replacement after rendering so fixed text in /autorenname is handled too.
+        if replace_from:
+            stem, extension = os.path.splitext(new_name)
+            stem = __import__("re").sub(__import__("re").escape(replace_from),
+                lambda _: replace_to or "", stem, flags=__import__("re").IGNORECASE)
+            new_name = (stem.strip() or "renamed_file") + extension
     except ValueError as exc:
         return await message.reply_text(f"Invalid filename format: {exc}")
 
@@ -187,6 +189,8 @@ async def rename_file_handler(client, message):
 
         caption_template = await settings.get_value(user_id, "caption")
         caption = caption_template.format(filename=os.path.splitext(new_name)[0], ext=os.path.splitext(new_name)[1].lstrip("."), user_id=user_id) if caption_template else (message.caption or "")
+        if replace_from and caption:
+            caption = __import__("re").sub(__import__("re").escape(replace_from), lambda _: replace_to or "", caption, flags=__import__("re").IGNORECASE)
         thumb_id = await settings.get_value(user_id, "thumb_file_id")
         thumb_path = None
         if thumb_id:
