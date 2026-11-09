@@ -91,40 +91,65 @@ async def reset_format_handler(client, message):
     await message.reply_text("Rename format reset.")
 
 @app.on_message(filters.private & filters.command("metadata"))
-async def set_metadata_handler(client, message):
-    raw = message.text.split(maxsplit=1)[1] if len(message.command) > 1 else ""
-    parts = [part.strip() for part in raw.split("|")]
-    if len(parts) != 3:
-        return await message.reply_text(
-            "Usage:\n/metadata Subtitle | Audio | Author\n"
-            "Example:\n/metadata Sᴜʙᴛɪᴛʟᴇ | Aᴜᴅɪᴏ | NETQUBO"
-        )
-    subtitle, audio, author = parts
-    await settings.set_value(message.from_user.id, "meta_subtitle", subtitle or None)
-    await settings.set_value(message.from_user.id, "meta_audio", audio or None)
-    await settings.set_value(message.from_user.id, "meta_author", author or None)
-    await message.reply_text(
-        f"Metadata saved:\nSubtitle: {subtitle or 'Not set'}\n"
-        f"Audio: {audio or 'Not set'}\nAuthor: {author or 'Not set'}"
-    )
+async def metadata_toggle_handler(client, message):
+    raw = message.text.split(maxsplit=1)[1].strip().lower() if len(message.command) > 1 else ""
+    current = await settings.get_value(message.from_user.id, "meta_enabled", False)
+    if raw in ("on", "enable", "1"):
+        enabled = True
+    elif raw in ("off", "disable", "0"):
+        enabled = False
+    elif not raw:
+        enabled = not current
+    else:
+        return await message.reply_text("Use /metadata to toggle, or /metadata on /metadata off.")
+    await settings.set_value(message.from_user.id, "meta_enabled", enabled)
+    await message.reply_text("Metadata: ON" if enabled else "Metadata: OFF")
+
+async def save_metadata_field(message, key, label):
+    value = message.text.split(maxsplit=1)[1].strip() if len(message.command) > 1 else ""
+    if not value:
+        return await message.reply_text(f"Usage: /{message.command[0]} Your {label} Here")
+    await settings.set_value(message.from_user.id, key, value)
+    await message.reply_text(f"{label} metadata saved: {value}")
+
+@app.on_message(filters.private & filters.command("settitle"))
+async def set_title_handler(client, message):
+    await save_metadata_field(message, "meta_title", "Title")
+
+@app.on_message(filters.private & filters.command("setauthor"))
+async def set_author_handler(client, message):
+    await save_metadata_field(message, "meta_author", "Author")
+
+@app.on_message(filters.private & filters.command("setartist"))
+async def set_artist_handler(client, message):
+    await save_metadata_field(message, "meta_artist", "Artist")
+
+@app.on_message(filters.private & filters.command("setaudio"))
+async def set_audio_handler(client, message):
+    await save_metadata_field(message, "meta_audio", "Audio")
+
+@app.on_message(filters.private & filters.command("setsubtitle"))
+async def set_subtitle_handler(client, message):
+    await save_metadata_field(message, "meta_subtitle", "Subtitle")
+
+@app.on_message(filters.private & filters.command("setvideo"))
+async def set_video_handler(client, message):
+    await save_metadata_field(message, "meta_video", "Video")
 
 @app.on_message(filters.private & filters.command("mymetadata"))
 async def my_metadata_handler(client, message):
-    subtitle = await settings.get_value(message.from_user.id, "meta_subtitle")
-    audio = await settings.get_value(message.from_user.id, "meta_audio")
-    author = await settings.get_value(message.from_user.id, "meta_author")
-    if not any((subtitle, audio, author)):
-        return await message.reply_text("No metadata settings saved. Use /metadata Subtitle | Audio | Author.")
-    await message.reply_text(
-        f"Current metadata:\nSubtitle: {subtitle or 'Not set'}\n"
-        f"Audio: {audio or 'Not set'}\nAuthor: {author or 'Not set'}"
-    )
+    uid = message.from_user.id
+    fields = (("Title", "meta_title"), ("Author", "meta_author"), ("Artist", "meta_artist"),
+              ("Audio", "meta_audio"), ("Subtitle", "meta_subtitle"), ("Video", "meta_video"))
+    values = [f"{label}: {await settings.get_value(uid, key) or 'Not set'}" for label, key in fields]
+    enabled = await settings.get_value(uid, "meta_enabled", False)
+    await message.reply_text("Metadata: " + ("ON" if enabled else "OFF") + "\\n" + "\\n".join(values))
 
 @app.on_message(filters.private & filters.command("delmetadata"))
 async def delete_metadata_handler(client, message):
-    for key in ("meta_subtitle", "meta_audio", "meta_author"):
+    for key in ("meta_title", "meta_author", "meta_artist", "meta_audio", "meta_subtitle", "meta_video"):
         await settings.set_value(message.from_user.id, key, None)
-    await message.reply_text("Custom metadata settings removed.")
+    await message.reply_text("All custom metadata fields cleared. Metadata toggle was not changed.")
 
 @app.on_message(filters.private & filters.command("setcaption"))
 async def set_caption_handler(client, message):
@@ -228,15 +253,20 @@ async def rename_file_handler(client, message):
         caption = caption_template.format(filename=os.path.splitext(new_name)[0], ext=os.path.splitext(new_name)[1].lstrip("."), user_id=user_id) if caption_template else (message.caption or "")
         if replace_from and caption:
             caption = __import__("re").sub(__import__("re").escape(replace_from), lambda _: replace_to or "", caption, flags=__import__("re").IGNORECASE)
-        meta_subtitle = await settings.get_value(user_id, "meta_subtitle")
-        meta_audio = await settings.get_value(user_id, "meta_audio")
-        meta_author = await settings.get_value(user_id, "meta_author")
-        if any((meta_subtitle, meta_audio, meta_author)):
+        meta_enabled = await settings.get_value(user_id, "meta_enabled", False)
+        metadata_values = {
+            "title": await settings.get_value(user_id, "meta_title"),
+            "author": await settings.get_value(user_id, "meta_author"),
+            "artist": await settings.get_value(user_id, "meta_artist"),
+            "audio": await settings.get_value(user_id, "meta_audio"),
+            "subtitle": await settings.get_value(user_id, "meta_subtitle"),
+            "video": await settings.get_value(user_id, "meta_video"),
+        }
+        if meta_enabled and any(metadata_values.values()):
             if shutil.which("ffmpeg"):
                 from media import write_metadata
                 metadata_path = os.path.join(work_dir, "metadata_" + new_name)
-                await write_metadata(renamed_path, metadata_path,
-                                     subtitle=meta_subtitle, audio=meta_audio, author=meta_author)
+                await write_metadata(renamed_path, metadata_path, **metadata_values)
                 os.replace(metadata_path, renamed_path)
             else:
                 log.warning("FFmpeg not found; custom metadata skipped")

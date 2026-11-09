@@ -14,16 +14,30 @@ async def probe_media(path):
         raise RuntimeError(err.decode(errors="replace")[-600:])
     return json.loads(out.decode("utf-8", errors="replace") or "{}")
 
-async def write_metadata(source, destination, subtitle=None, audio=None, author=None):
-    """Remux streams without re-encoding and set common container metadata."""
+async def write_metadata(source, destination, title=None, author=None, artist=None,
+                         audio=None, subtitle=None, video=None):
+    """Remux all streams without re-encoding and set container/track titles."""
     args = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
             "-i", str(source), "-map", "0", "-c", "copy"]
+    if title:
+        args += ["-metadata", f"title={title}"]
     if author:
-        args += ["-metadata", f"author={author}", "-metadata", f"artist={author}"]
+        args += ["-metadata", f"author={author}"]
+        byline = f"By :- {author}"
+        if not audio:
+            args += ["-metadata:s:a", f"title={byline}"]
+        if not subtitle:
+            args += ["-metadata:s:s", f"title={byline}"]
+        if not video:
+            args += ["-metadata:s:v", f"title={byline}"]
+    if artist:
+        args += ["-metadata", f"artist={artist}"]
     if audio:
         args += ["-metadata:s:a", f"title={audio}"]
     if subtitle:
         args += ["-metadata:s:s", f"title={subtitle}"]
+    if video:
+        args += ["-metadata:s:v", f"title={video}"]
     args.append(str(destination))
     proc = await asyncio.create_subprocess_exec(
         *args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
