@@ -240,13 +240,21 @@ async def rename_file_handler(client, message):
                 os.replace(metadata_path, renamed_path)
             else:
                 log.warning("FFmpeg not found; custom metadata skipped")
-                thumb_id = await settings.get_value(user_id, "thumb_file_id")
+
+        # A saved custom thumbnail always wins. Otherwise extract one automatically from video files.
+        thumb_id = await settings.get_value(user_id, "thumb_file_id")
         thumb_path = None
         if thumb_id:
             try:
-                thumb_path = await client.download_media(thumb_id, file_name=f"{work_dir}/thumb.jpg")
+                thumb_path = await client.download_media(thumb_id, file_name=f"{work_dir}/custom_thumb.jpg")
             except Exception:
                 log.warning("Could not download saved thumbnail for user %s", user_id, exc_info=True)
+        if not thumb_path and shutil.which("ffmpeg") and (message.video or (message.document and (media.mime_type or "").startswith("video/"))):
+            try:
+                from media import generate_thumbnail
+                thumb_path = str(await generate_thumbnail(renamed_path, os.path.join(work_dir, "auto_thumb.jpg")))
+            except Exception:
+                log.warning("Automatic thumbnail generation failed for user %s", user_id, exc_info=True)
 
         started = time.monotonic()
         last[0] = 0.0

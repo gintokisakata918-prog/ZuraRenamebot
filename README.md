@@ -6,7 +6,7 @@ An independently implemented Telegram auto-rename bot using Pyrogram and MongoDB
 - Per-user filename templates and extension preservation.
 - Documents, videos, audio and animations.
 - Custom output caption: `/setcaption your caption`; use `/delcaption` to clear.
-- Custom thumbnail: reply to a photo with `/setthumb`; use `/delthumb` to clear.\n- Per-user MKV/media metadata labels for subtitle, audio and author via `/metadata Subtitle | Audio | Author`.
+- Custom thumbnail: reply to a photo with `/setthumb`; use `/delthumb` to clear.\n- If no custom thumbnail is saved, FFmpeg automatically extracts a JPEG thumbnail from video files when available.\n- Per-user MKV/media metadata labels for subtitle, audio and author via `/metadata Subtitle | Audio | Author`.
 - Download/upload progress and per-user job cancellation with `/cancel`.\n- Case-insensitive filename text replacement: `/setreplace OLD | NEW`, `/myreplace`, `/delreplace`.
 - Optional FFmpeg helpers in `media.py` for media inspection and metadata remuxing.
 
