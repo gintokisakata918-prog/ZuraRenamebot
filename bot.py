@@ -31,12 +31,14 @@ def human(size):
         size /= 1024
 
 def progress_text(label, current, total, started):
-    percent = current * 100 / total if total else 0
-    filled = min(10, int(percent / 10))
+    percent = min(100.0, current * 100 / total) if total else 0
+    filled = min(12, int(percent / 100 * 12))
     speed = current / max(time.monotonic() - started, 0.1)
-    eta = int((total - current) / speed) if speed else 0
-    return (f"{label}\n{'▰' * filled}{'▱' * (10 - filled)} {percent:.1f}%\n"
-            f"{human(current)} / {human(total)}\n{human(speed)}/s • ETA {eta}s")
+    eta = int((total - current) / speed) if speed and total else 0
+    return (f"**{label}**\\n"
+            f"{'▰' * filled}{'▱' * (12 - filled)} {percent:.1f}%\\n"
+            f"📦 {human(current)} / {human(total)}\\n"
+            f"⚡ {human(speed)}/s  •  ⏳ ETA: {eta}s")
 
 async def update_progress(status, label, current, total, started, last):
     now = time.monotonic()
