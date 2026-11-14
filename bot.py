@@ -20,7 +20,9 @@ log = logging.getLogger("zura")
 os.makedirs(Config.DOWNLOAD_DIR, exist_ok=True)
 
 app = Client("zura_rename", api_id=Config.API_ID, api_hash=Config.API_HASH,
-             bot_token=Config.BOT_TOKEN, parse_mode=ParseMode.DISABLED,\n             workers=Config.WORKERS,\n             max_concurrent_transmissions=Config.MAX_CONCURRENT_TRANSMISSIONS)
+             bot_token=Config.BOT_TOKEN, parse_mode=ParseMode.DISABLED,
+             workers=Config.WORKERS,
+             max_concurrent_transmissions=Config.MAX_CONCURRENT_TRANSMISSIONS)
 settings = UserSettings(Config.DB_URL, Config.DB_NAME)
 MEDIA_FILTER = filters.document | filters.video | filters.audio | filters.animation
 ACTIVE = {}
