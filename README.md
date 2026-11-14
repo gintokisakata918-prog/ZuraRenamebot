@@ -32,7 +32,13 @@ The merge uses FFmpeg stream-copy without re-encoding, so all parts must have co
 ## Placeholders
 `{filename}`, `{ext}`, `{user_id}`, `{date}`, `{time}`.
 
-## Google Colab performance\n- The bot uses `TgCrypto` (listed in requirements) for faster MTProto encryption when its wheel installs successfully.\n- Default Colab download/temp folder is `/content/zura_downloads` (local runtime disk).\n- Pyrogram defaults are tuned to 16 update workers and up to 4 concurrent transfers. These settings help with multiple simultaneous transfers; they do not guarantee a faster single-file transfer.\n- Optional environment variables: `PYROGRAM_WORKERS` (4–32) and `MAX_CONCURRENT_TRANSMISSIONS` (1–8).\n- Actual throughput depends mainly on Colab runtime/network, Telegram DC, file size and current load. Keep the Colab runtime connected while the bot is running.\n\n## Setup
+## Google Colab performance\n- The bot uses `TgCrypto` (listed in requirements) for faster MTProto encryption when its wheel installs successfully.\n- Default Colab download/temp folder is `/content/zura_downloads` (local runtime disk).\n- Pyrogram defaults are tuned to 16 update workers and up to 4 concurrent transfers. These settings help with multiple simultaneous transfers; they do not guarantee a faster single-file transfer.\n- Optional environment variables: `PYROGRAM_WORKERS` (4–32) and `MAX_CONCURRENT_TRANSMISSIONS` (1–8).\n- Actual throughput depends mainly on Colab runtime/network, Telegram DC, file size and current load. Keep the Colab runtime connected while the bot is running.\n\n## Google Colab deployment
+- Open `colab.ipynb` in Google Colab and follow the setup cells.
+- Add `API_ID`, `API_HASH`, `BOT_TOKEN`, and `DB_URL` in Colab Secrets; optionally add `DB_NAME`.
+- The notebook installs FFmpeg and 7-Zip, installs Python requirements, loads credentials from Secrets, and starts `bot.py`.
+- Colab runtimes are temporary; keep the runtime connected while the bot runs. Do not treat Colab as guaranteed 24/7 hosting.
+
+## Setup
 1. Copy `.env.example` to `.env` and fill Telegram credentials and MongoDB URI.
 2. Install dependencies: `pip install -r requirements.txt`.
 3. Run: `python bot.py`.
