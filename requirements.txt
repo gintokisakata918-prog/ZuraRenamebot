@@ -4,3 +4,4 @@ motor>=3.3,<4
 python-dotenv>=1.0,<2
 pyzipper>=0.3.6,<1
 py7zr>=0.22,<2
+aiohttp>=3.9,<4
