@@ -13,6 +13,9 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 WAITING = {}
 SESSIONS = {}
 
+def is_archive_waiting(user_id):
+    return user_id in WAITING
+
 def register_archive_handlers(app, Config):
     async def stop(update):
         try:
