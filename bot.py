@@ -13,6 +13,7 @@ from config import Config
 from database import UserSettings
 from rename_engine import build_filename
 from archive_feature import is_archive_waiting, register_archive_handlers
+from settings_panel import register_settings_handlers
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 log = logging.getLogger("zura")
@@ -433,6 +434,7 @@ async def rename_file_handler(client, message):
         shutil.rmtree(work_dir, ignore_errors=True)
 
 register_archive_handlers(app, Config)
+register_settings_handlers(app, Config, settings)
 
 if __name__ == "__main__":
     app.run()
