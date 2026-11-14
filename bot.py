@@ -12,6 +12,7 @@ from pyrogram.types import Message
 from config import Config
 from database import UserSettings
 from rename_engine import build_filename
+from archive_feature import is_archive_waiting, register_archive_handlers
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 log = logging.getLogger("zura")
@@ -291,6 +292,8 @@ async def merge_done_handler(client, message):
 @app.on_message(filters.private & MEDIA_FILTER)
 async def merge_collect_handler(client, message):
     uid = message.from_user.id
+    if is_archive_waiting(uid):
+        return
     if uid not in MERGE_SESSIONS:
         return
     media = message.video or message.document
@@ -302,6 +305,8 @@ async def merge_collect_handler(client, message):
 @app.on_message(filters.private & MEDIA_FILTER)
 async def rename_file_handler(client, message):
     user_id = message.from_user.id
+    if is_archive_waiting(user_id):
+        return
     if user_id in ACTIVE and not ACTIVE[user_id].done():
         return await message.reply_text("A job is already running. Use /cancel first.")
     # If the user has not chosen a custom format, preserve the original filename automatically.
@@ -427,7 +432,6 @@ async def rename_file_handler(client, message):
         ACTIVE.pop(user_id, None)
         shutil.rmtree(work_dir, ignore_errors=True)
 
-from archive_feature import register_archive_handlers
 register_archive_handlers(app, Config)
 
 if __name__ == "__main__":
