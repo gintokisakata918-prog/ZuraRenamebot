@@ -427,5 +427,8 @@ async def rename_file_handler(client, message):
         ACTIVE.pop(user_id, None)
         shutil.rmtree(work_dir, ignore_errors=True)
 
+from archive_feature import register_archive_handlers
+register_archive_handlers(app, Config)
+
 if __name__ == "__main__":
     app.run()
