@@ -9,7 +9,7 @@ An independently implemented Telegram auto-rename bot using Pyrogram and MongoDB
 - Custom thumbnail: reply to a photo with `/setthumb`; use `/delthumb` to clear.\n- If no custom thumbnail is saved, FFmpeg automatically extracts a JPEG thumbnail from video files when available.\n- Download/upload progress and per-user job cancellation with `/cancel`.\n- Case-insensitive filename text replacement: `/setreplace OLD | NEW`, `/myreplace`, `/delreplace`.
 - Optional FFmpeg helpers in `media.py` for media inspection and metadata remuxing.
 
-## Merge videos
+## Archive password tools\n- Send `/archive`, then upload a `.zip`, `.7z` or `.rar` archive.\n- Enter the current password, or send `/skip` if the archive is not encrypted.\n- Choose password removal or password change; new passwords are requested privately and the message is deleted when possible.\n- ZIP and 7Z outputs retain their format. RAR input is rebuilt as 7Z because RAR archive creation is not supported.\n- The tool does not crack or bypass passwords; the current password is required for encrypted archives.\n- Install the system `7z` executable on the host for RAR extraction.\n\n## Merge videos
 1. Send `/merge` to start a merge session.
 2. Send at least two video files in the order you want.
 3. Send `/done` to join and upload, or `/cancel` to stop.
@@ -21,7 +21,7 @@ The merge uses FFmpeg stream-copy without re-encoding, so all parts must have co
 - `/autorenname {filename}_{date}.{ext}`
 - `/myformat`, `/resetformat`
 - `/setcaption text`, `/delcaption`\n- Reply to a photo with `/setthumb`; `/delthumb`
-- `/setreplace OLD | NEW`, `/myreplace`, `/delreplace`\n- `/merge`, `/done`, `/cancel`
+- `/setreplace OLD | NEW`, `/myreplace`, `/delreplace`\n- `/archive` — remove or change a ZIP/7Z/RAR archive password\n- `/skip` — indicate that the archive has no current password\n- `/merge`, `/done`, `/cancel`
 
 ## Metadata commands
 - `/metadata` toggles metadata processing; `/metadata on` and `/metadata off` set it explicitly.
