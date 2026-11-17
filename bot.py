@@ -37,33 +37,34 @@ def human(size):
 
 def progress_text(label, current, total, started):
     elapsed = max(time.monotonic() - started, 0.1)
-    percent = min(100.0, current * 100 / total) if total else 0
-    filled = min(10, int(percent / 10))
+    percent = min(100.0, current * 100 / total) if total else 0.0
+    filled = min(10, int(percent // 10))
     speed = current / elapsed
-    eta = int((total - current) / speed) if speed and total else 0
+    eta = int(max(0, total - current) / speed) if speed > 0 and total else 0
     eta_h, eta_rem = divmod(eta, 3600)
     eta_m, eta_s = divmod(eta_rem, 60)
     elapsed_i = int(elapsed)
-    elapsed_m, elapsed_s = divmod(elapsed_i, 60)
-    elapsed_h, elapsed_m = divmod(elapsed_m, 60)
+    elapsed_h, elapsed_rem = divmod(elapsed_i, 3600)
+    elapsed_m, elapsed_s = divmod(elapsed_rem, 60)
     stage = "📥 Downloading" if "Download" in label else "📤 Uploading"
+    bar = "▰" * filled + "▱" * (10 - filled)
     return (
-        f"**Progress: [{('▰' * filled) + ('▱' * (10 - filled))}] {percent:.1f}%**\\n"
-        f"{stage}: {human(current)} | {human(total)}\\n"
-        f"⚡️ Speed: {human(speed)}/s\\n"
-        f"⌛ ETA: {eta_h}h {eta_m}m {eta_s}s\\n"
+        f"Progress: [{bar}] {percent:.1f}%\n"
+        f"{stage}: {human(current)} | {human(total)}\n"
+        f"⚡️ Speed: {human(speed)}/s\n"
+        f"⌛ ETA: {eta_h}h {eta_m}m {eta_s}s\n"
         f"⏱️ Time elapsed: {elapsed_h}h {elapsed_m}m {elapsed_s}s"
     )
 
 async def update_progress(status, label, current, total, started, last):
     now = time.monotonic()
-    if now - last[0] < 2 and current < total:
+    if current < total and now - last[0] < 1.5:
         return
     last[0] = now
     try:
         await status.edit_text(progress_text(label, current, total, started))
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("Could not update %s progress message: %s", label, exc)
 
 @app.on_message(filters.private & filters.command(["start", "help"]))
 async def start_handler(client, message):
