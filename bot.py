@@ -36,14 +36,24 @@ def human(size):
         size /= 1024
 
 def progress_text(label, current, total, started):
+    elapsed = max(time.monotonic() - started, 0.1)
     percent = min(100.0, current * 100 / total) if total else 0
-    filled = min(12, int(percent / 100 * 12))
-    speed = current / max(time.monotonic() - started, 0.1)
+    filled = min(10, int(percent / 10))
+    speed = current / elapsed
     eta = int((total - current) / speed) if speed and total else 0
-    return (f"**{label}**\\n"
-            f"{'▰' * filled}{'▱' * (12 - filled)} {percent:.1f}%\\n"
-            f"📦 {human(current)} / {human(total)}\\n"
-            f"⚡ {human(speed)}/s  •  ⏳ ETA: {eta}s")
+    eta_h, eta_rem = divmod(eta, 3600)
+    eta_m, eta_s = divmod(eta_rem, 60)
+    elapsed_i = int(elapsed)
+    elapsed_m, elapsed_s = divmod(elapsed_i, 60)
+    elapsed_h, elapsed_m = divmod(elapsed_m, 60)
+    stage = "📥 Downloading" if "Download" in label else "📤 Uploading"
+    return (
+        f"**Progress: [{('▰' * filled) + ('▱' * (10 - filled))}] {percent:.1f}%**\\n"
+        f"{stage}: {human(current)} | {human(total)}\\n"
+        f"⚡️ Speed: {human(speed)}/s\\n"
+        f"⌛ ETA: {eta_h}h {eta_m}m {eta_s}s\\n"
+        f"⏱️ Time elapsed: {elapsed_h}h {elapsed_m}m {elapsed_s}s"
+    )
 
 async def update_progress(status, label, current, total, started, last):
     now = time.monotonic()
