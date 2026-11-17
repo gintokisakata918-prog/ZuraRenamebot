@@ -211,6 +211,9 @@ async def delete_replace_handler(client, message):
 @app.on_message(filters.private & filters.command("cancel"))
 async def cancel_handler(client, message):
     uid = message.from_user.id
+    if uid in PENDING_RENAMES:
+        PENDING_RENAMES.pop(uid, None)
+        return await message.reply_text("Rename request cancelled.")
     if uid in MERGE_SESSIONS and uid not in ACTIVE:
         MERGE_SESSIONS.pop(uid, None)
         return await message.reply_text("Merge mode cancelled.")
@@ -305,35 +308,24 @@ async def merge_collect_handler(client, message):
     MERGE_SESSIONS[uid].append(message)
     await message.reply_text(f"Added part {len(MERGE_SESSIONS[uid])}. Send next video or /done.")
 
-@app.on_message(filters.private & MEDIA_FILTER)
-async def rename_file_handler(client, message):
+PENDING_RENAMES = {}
+
+async def telegram_api(method, payload):
+    import aiohttp
+    url = "https://api.telegram.org/bot" + Config.BOT_TOKEN + "/" + method
+    timeout = aiohttp.ClientTimeout(total=20)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(url, json=payload) as response:
+            result = await response.json()
+            if not result.get("ok"):
+                raise RuntimeError(result.get("description", "Telegram API error"))
+            return result.get("result")
+
+async def process_rename_file(client, message, new_name, output_type):
     user_id = message.from_user.id
-    if is_archive_waiting(user_id):
-        return
-    # Media already collected by the merge handler must not start a rename job.
-    if user_id in MERGE_SESSIONS:
-        return
-    if user_id in ACTIVE and not ACTIVE[user_id].done():
-        return await message.reply_text("A job is already running. Use /cancel first.")
-    # If the user has not chosen a custom format, preserve the original filename automatically.
-    template = await settings.get_value(user_id, "rename_template") or "{filename}.{ext}"
     media = message.document or message.video or message.audio or message.animation
     if not media:
         return
-    original_name = getattr(media, "file_name", None) or f"zura_file_{media.file_unique_id}"
-    replace_from = await settings.get_value(user_id, "replace_from")
-    replace_to = await settings.get_value(user_id, "replace_to", "")
-    try:
-        new_name = build_filename(template, original_name, user_id)
-        # Apply replacement after rendering so fixed text in /autorenname is handled too.
-        if replace_from:
-            stem, extension = os.path.splitext(new_name)
-            stem = __import__("re").sub(__import__("re").escape(replace_from),
-                lambda _: replace_to or "", stem, flags=__import__("re").IGNORECASE)
-            new_name = (stem.strip() or "renamed_file") + extension
-    except ValueError as exc:
-        return await message.reply_text(f"Invalid filename format: {exc}")
-
     status = await message.reply_text("Preparing download…")
     work_dir = tempfile.mkdtemp(prefix="zura_", dir=Config.DOWNLOAD_DIR)
     ACTIVE[user_id] = asyncio.current_task()
@@ -351,8 +343,11 @@ async def rename_file_handler(client, message):
 
         caption_template = await settings.get_value(user_id, "caption")
         caption = caption_template.format(filename=os.path.splitext(new_name)[0], ext=os.path.splitext(new_name)[1].lstrip("."), user_id=user_id) if caption_template else (message.caption or "")
+        replace_from = await settings.get_value(user_id, "replace_from")
+        replace_to = await settings.get_value(user_id, "replace_to", "")
         if replace_from and caption:
             caption = __import__("re").sub(__import__("re").escape(replace_from), lambda _: replace_to or "", caption, flags=__import__("re").IGNORECASE)
+
         meta_enabled = await settings.get_value(user_id, "meta_enabled", False)
         metadata_values = {
             "title": await settings.get_value(user_id, "meta_title"),
@@ -371,63 +366,44 @@ async def rename_file_handler(client, message):
             else:
                 log.warning("FFmpeg not found; custom metadata skipped")
 
-        # Priority: user's custom thumbnail > thumbnail attached to incoming Telegram file > FFmpeg preview.
         thumb_path = None
         thumb_id = await settings.get_value(user_id, "thumb_file_id")
         if thumb_id:
             try:
-                thumb_path = await client.download_media(
-                    thumb_id, file_name=os.path.join(work_dir, "custom_thumb.jpg")
-                )
+                thumb_path = await client.download_media(thumb_id, file_name=os.path.join(work_dir, "custom_thumb.jpg"))
             except Exception:
                 log.warning("Could not download saved thumbnail for user %s", user_id, exc_info=True)
-
         if not thumb_path:
             original_thumbs = getattr(media, "thumbs", None) or []
             if original_thumbs:
-                # Choose the largest thumbnail Telegram supplied with the original media.
-                original_thumb = max(
-                    original_thumbs,
-                    key=lambda item: (getattr(item, "width", 0) or 0) * (getattr(item, "height", 0) or 0)
-                )
+                original_thumb = max(original_thumbs, key=lambda item: (getattr(item, "width", 0) or 0) * (getattr(item, "height", 0) or 0))
                 try:
-                    thumb_path = await client.download_media(
-                        original_thumb.file_id, file_name=os.path.join(work_dir, "original_thumb.jpg")
-                    )
+                    thumb_path = await client.download_media(original_thumb.file_id, file_name=os.path.join(work_dir, "original_thumb.jpg"))
                     if thumb_path and os.path.getsize(thumb_path) > 200 * 1024:
                         os.remove(thumb_path)
                         thumb_path = None
                 except Exception:
                     log.warning("Could not download original Telegram thumbnail", exc_info=True)
                     thumb_path = None
-
-        if not thumb_path and shutil.which("ffmpeg") and (
-            message.video or (message.document and (media.mime_type or "").startswith("video/"))
-        ):
+        is_video = bool(message.video or (message.document and (media.mime_type or "").startswith("video/")))
+        if not thumb_path and is_video and shutil.which("ffmpeg"):
             try:
                 from media import generate_thumbnail
-                thumb_path = str(await generate_thumbnail(
-                    renamed_path, os.path.join(work_dir, "auto_thumb.jpg")
-                ))
+                thumb_path = str(await generate_thumbnail(renamed_path, os.path.join(work_dir, "auto_thumb.jpg")))
             except Exception:
                 log.warning("Automatic thumbnail generation failed for user %s", user_id, exc_info=True)
 
-        started = time.monotonic()
-        last[0] = 0.0
+        started, last[0] = time.monotonic(), 0.0
         await status.edit_text("Preparing upload…")
         upload_thumb = thumb_path if thumb_path and os.path.isfile(thumb_path) else None
-        is_video = bool(message.video or (
-            message.document and (media.mime_type or "").startswith("video/")
-        ))
-        upload_progress = lambda current, total: update_progress(
-            status, "Uploading video" if is_video else "Uploading file",
-            current, total, started, last
-        )
-        if is_video:
+        upload_progress = lambda current, total: update_progress(status, "Uploading video" if output_type == "video" else "Uploading document", current, total, started, last)
+        if output_type == "video":
+            if not is_video:
+                raise ValueError("This file is not a video. Choose Document output.")
             await client.send_video(
                 chat_id=message.chat.id, video=renamed_path, caption=caption or None,
-                thumb=upload_thumb, supports_streaming=True,
-                reply_to_message_id=message.id, progress=upload_progress
+                thumb=upload_thumb, supports_streaming=True, reply_to_message_id=message.id,
+                progress=upload_progress
             )
         else:
             await client.send_document(
@@ -436,20 +412,88 @@ async def rename_file_handler(client, message):
             )
         await status.delete()
     except asyncio.CancelledError:
-        try:
-            await status.edit_text("Job cancelled.")
-        except Exception:
-            pass
+        try: await status.edit_text("Job cancelled.")
+        except Exception: pass
         raise
-    except Exception:
+    except Exception as exc:
         log.exception("Rename operation failed for user %s", user_id)
-        try:
-            await status.edit_text("Rename failed. Check bot logs and available disk space.")
-        except Exception:
-            pass
+        try: await status.edit_text("Rename failed: " + str(exc)[:450])
+        except Exception: pass
     finally:
         ACTIVE.pop(user_id, None)
         shutil.rmtree(work_dir, ignore_errors=True)
+
+@app.on_message(filters.private & MEDIA_FILTER)
+async def rename_file_handler(client, message):
+    user_id = message.from_user.id
+    if is_archive_waiting(user_id) or user_id in MERGE_SESSIONS:
+        return
+    if user_id in ACTIVE and not ACTIVE[user_id].done():
+        return await message.reply_text("A job is already running. Use /cancel first.")
+    media = message.document or message.video or message.audio or message.animation
+    if not media:
+        return
+    original_name = getattr(media, "file_name", None) or f"zura_file_{media.file_unique_id}"
+    PENDING_RENAMES[user_id] = {"message": message, "original_name": original_name}
+    await message.reply_text(
+        "Please Enter New Filename…\n\nOld File Name :- " + original_name +
+        "\n\nSend the new filename (with or without extension). Use /cancel to stop."
+    )
+
+@app.on_message(filters.private & filters.text, group=-1)
+async def rename_filename_input_handler(client, message):
+    user_id = message.from_user.id
+    pending = PENDING_RENAMES.get(user_id)
+    if not pending or message.text.startswith("/"):
+        return
+    raw_name = message.text.strip().replace("\\", "/").split("/")[-1]
+    if not raw_name or raw_name in (".", ".."):
+        return await message.reply_text("Please send a valid filename.")
+    original_name = pending["original_name"]
+    original_ext = os.path.splitext(original_name)[1]
+    if not os.path.splitext(raw_name)[1] and original_ext:
+        raw_name += original_ext
+    if len(raw_name.encode("utf-8")) > 240:
+        return await message.reply_text("Filename is too long. Please use a shorter name.")
+    if any(ch in raw_name for ch in ("\0", "\n", "\r")):
+        return await message.reply_text("Filename contains invalid characters.")
+    pending["new_name"] = raw_name
+    prompt = await message.reply_text(
+        "Select The Output File Type\n\nFile Name :- " + raw_name
+    )
+    await telegram_api("editMessageReplyMarkup", {
+        "chat_id": prompt.chat.id, "message_id": prompt.id,
+        "reply_markup": {"inline_keyboard": [
+            [{"text": "⭐ 📁 Document", "callback_data": "zura:output:document", "style": "primary"}],
+            [{"text": "🎥 Video", "callback_data": "zura:output:video", "style": "success"}]
+        ]}
+    })
+
+@app.on_callback_query(filters.regex(r"^zura:output:(document|video)$"))
+async def rename_output_type_callback(client, query):
+    user_id = query.from_user.id
+    pending = PENDING_RENAMES.get(user_id)
+    if not pending:
+        return await query.answer("This rename request has expired.", show_alert=True)
+    output_type = query.data.rsplit(":", 1)[1]
+    source = pending["message"]
+    new_name = pending.get("new_name")
+    if not new_name:
+        return await query.answer("Please enter the new filename first.", show_alert=True)
+    PENDING_RENAMES.pop(user_id, None)
+    await query.answer("Starting " + output_type + " upload…")
+    try:
+        await telegram_api("editMessageReplyMarkup", {
+            "chat_id": query.message.chat.id, "message_id": query.message.id,
+            "reply_markup": {"inline_keyboard": []}
+        })
+    except Exception:
+        pass
+    if user_id in ACTIVE and not ACTIVE[user_id].done():
+        return await query.message.reply_text("Another task is already running. Use /cancel first.")
+    task = asyncio.create_task(process_rename_file(client, source, new_name, output_type))
+    ACTIVE[user_id] = task
+
 
 register_archive_handlers(app, Config)
 register_settings_handlers(app, Config, settings)
