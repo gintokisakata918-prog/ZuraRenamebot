@@ -342,7 +342,15 @@ async def process_rename_file(client, message, new_name, output_type):
         os.replace(local_path, renamed_path)
 
         caption_template = await settings.get_value(user_id, "caption")
-        caption = caption_template.format(filename=os.path.splitext(new_name)[0], ext=os.path.splitext(new_name)[1].lstrip("."), user_id=user_id) if caption_template else (message.caption or "")
+        if caption_template:
+            caption = caption_template.format(
+                filename=os.path.splitext(new_name)[0],
+                ext=os.path.splitext(new_name)[1].lstrip("."),
+                user_id=user_id
+            )
+        else:
+            # Keep the incoming caption; if none exists, show the renamed filename as the video caption.
+            caption = (message.caption or "").strip() or new_name
         replace_from = await settings.get_value(user_id, "replace_from")
         replace_to = await settings.get_value(user_id, "replace_to", "")
         if replace_from and caption:
