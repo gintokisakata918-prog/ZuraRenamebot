@@ -273,10 +273,10 @@ async def merge_done_handler(client, message):
             caption = caption.format(filename=os.path.splitext(output_name)[0], ext=os.path.splitext(output_name)[1].lstrip("."), user_id=uid)
         started, last = time.monotonic(), [0.0]
         await status.edit_text("Uploading merged video…")
-        await client.send_document(
-            chat_id=message.chat.id, document=output_path, caption=caption or None,
-            reply_to_message_id=message.id,
-            progress=lambda current, total: update_progress(status, "Uploading merged file", current, total, started, last)
+        await client.send_video(
+            chat_id=message.chat.id, video=output_path, caption=caption or None,
+            supports_streaming=True, reply_to_message_id=message.id,
+            progress=lambda current, total: update_progress(status, "Uploading merged video", current, total, started, last)
         )
         await status.delete()
     except asyncio.CancelledError:
@@ -292,7 +292,7 @@ async def merge_done_handler(client, message):
         ACTIVE.pop(uid, None)
         shutil.rmtree(work_dir, ignore_errors=True)
 
-@app.on_message(filters.private & MEDIA_FILTER)
+@app.on_message(filters.private & MEDIA_FILTER, group=-1)
 async def merge_collect_handler(client, message):
     uid = message.from_user.id
     if is_archive_waiting(uid):
@@ -309,6 +309,9 @@ async def merge_collect_handler(client, message):
 async def rename_file_handler(client, message):
     user_id = message.from_user.id
     if is_archive_waiting(user_id):
+        return
+    # Media already collected by the merge handler must not start a rename job.
+    if user_id in MERGE_SESSIONS:
         return
     if user_id in ACTIVE and not ACTIVE[user_id].done():
         return await message.reply_text("A job is already running. Use /cancel first.")
@@ -412,12 +415,25 @@ async def rename_file_handler(client, message):
         started = time.monotonic()
         last[0] = 0.0
         await status.edit_text("Preparing upload…")
-        await client.send_document(
-            chat_id=message.chat.id, document=renamed_path, caption=caption or None,
-            thumb=thumb_path if thumb_path and os.path.isfile(thumb_path) else None,
-            reply_to_message_id=message.id,
-            progress=lambda current, total: update_progress(status, "Uploading", current, total, started, last)
+        upload_thumb = thumb_path if thumb_path and os.path.isfile(thumb_path) else None
+        is_video = bool(message.video or (
+            message.document and (media.mime_type or "").startswith("video/")
+        ))
+        upload_progress = lambda current, total: update_progress(
+            status, "Uploading video" if is_video else "Uploading file",
+            current, total, started, last
         )
+        if is_video:
+            await client.send_video(
+                chat_id=message.chat.id, video=renamed_path, caption=caption or None,
+                thumb=upload_thumb, supports_streaming=True,
+                reply_to_message_id=message.id, progress=upload_progress
+            )
+        else:
+            await client.send_document(
+                chat_id=message.chat.id, document=renamed_path, caption=caption or None,
+                thumb=upload_thumb, reply_to_message_id=message.id, progress=upload_progress
+            )
         await status.delete()
     except asyncio.CancelledError:
         try:
