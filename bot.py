@@ -32,8 +32,16 @@ MERGE_SESSIONS = {}
 def remove_credit(text):
     if not text:
         return text
-    # Remove one or more consecutive @credits from the beginning, plus common separators.
-    text = re.sub(r"^(?:@[A-Za-z0-9_]+)+", "", text.strip())
+    text = text.strip()
+    # If multiple credits are joined together, remove only the LAST one.
+    # Example: @WADRAMA@ASKOREANDRAMA Title -> @WADRAMA Title
+    match = re.match(r"^((?:@[A-Za-z0-9_]+)+)", text)
+    if match:
+        tags = re.findall(r"@[A-Za-z0-9_]+", match.group(1))
+        remove_tag = tags[-1] if len(tags) > 1 else tags[0]
+        # Remove the chosen tag only, preserving any other leading credit.
+        pos = text.find(remove_tag)
+        text = text[:pos] + text[pos + len(remove_tag):]
     text = re.sub(r"^[\\s|:/\\-–—·]+", "", text)
     return text.strip()
 
