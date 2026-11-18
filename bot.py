@@ -29,6 +29,14 @@ MEDIA_FILTER = filters.document | filters.video | filters.audio | filters.animat
 ACTIVE = {}
 MERGE_SESSIONS = {}
 
+def remove_credit(text):
+    if not text:
+        return text
+    # Remove one or more consecutive @credits from the beginning, plus common separators.
+    text = re.sub(r"^(?:@[A-Za-z0-9_]+)+", "", text.strip())
+    text = re.sub(r"^[\\s|:/\\-–—·]+", "", text)
+    return text.strip()
+
 def human(size):
     size = float(size or 0)
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -370,6 +378,8 @@ async def process_rename_file(client, message, new_name, output_type):
         else:
             # Keep the incoming caption; if none exists, show the renamed filename as the video caption.
             caption = (message.caption or "").strip() or new_name
+            if await settings.get_value(user_id, "rename_style", "manual") == "credit":
+                caption = remove_credit(caption) or new_name
 
 
         meta_enabled = await settings.get_value(user_id, "meta_enabled", False)
@@ -460,7 +470,7 @@ async def rename_file_handler(client, message):
     style = await settings.get_value(user_id, "rename_style", "manual")
     if style == "credit":
         # Remove a leading @credit token (e.g. @ASKOREANDRAMA) and trim whitespace.
-        cleaned = re.sub(r"^@[^\\s]+\\s*", "", original_name).strip()
+        cleaned = remove_credit(original_name)
         if not cleaned:
             cleaned = original_name
         prefix = await settings.get_value(user_id, "filename_prefix", "")
