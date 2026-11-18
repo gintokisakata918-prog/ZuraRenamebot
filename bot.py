@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -80,6 +81,7 @@ async def start_handler(client, message):
         "/setcaption text — set output caption\n/delcaption — remove custom caption\n"
         "/setthumb — reply to a photo with this command\n/delthumb — remove thumbnail\n"
         "/set_prefix text — add prefix to renamed filenames\n/my_prefix — show prefix\n/del_prefix — remove prefix\n"
+        "/rename_style — choose rename style (manual or auto credit removal)\n"
         "/merge — start merging video parts\n/done — merge and upload\n/cancel — cancel job or merge mode"
     )
 
@@ -210,6 +212,24 @@ async def del_prefix_handler(client, message):
     await settings.set_value(message.from_user.id, "filename_prefix", "")
     await message.reply_text("Filename prefix removed.")
 
+@app.on_message(filters.private & filters.command("rename_style"))
+async def rename_style_handler(client, message):
+    current = await settings.get_value(message.from_user.id, "rename_style", "manual")
+    markup = {"inline_keyboard": [
+        [{"text": ("✓ " if current == "manual" else "") + "Style 1 — Manual rename", "callback_data": "zura:style:manual"}],
+        [{"text": ("✓ " if current == "credit" else "") + "Style 2 — Remove @credit automatically", "callback_data": "zura:style:credit"}]
+    ]}
+    await telegram_api("sendMessage", {"chat_id": message.chat.id,
+        "text": "Choose how incoming files are renamed:",
+        "reply_markup": markup})
+
+@app.on_callback_query(filters.regex(r"^zura:style:(manual|credit)$"))
+async def rename_style_callback(client, query):
+    style = query.data.rsplit(":", 1)[1]
+    await settings.set_value(query.from_user.id, "rename_style", style)
+    await query.answer("Rename style saved.")
+    await query.message.edit_text("Rename style saved: " + ("Style 1 — Manual rename" if style == "manual" else "Style 2 — Automatic @credit removal"))
+
 @app.on_message(filters.private & filters.command("cancel"))
 async def cancel_handler(client, message):
     uid = message.from_user.id
@@ -264,7 +284,10 @@ async def merge_done_handler(client, message):
         ext = ext or ".mkv"
         template = await settings.get_value(uid, "rename_template") or "{filename}.{ext}"
         output_name = build_filename(template, f"{stem}_merged{ext}", uid)
-        prefix = await settings.get_value(uid, "filename_prefix", "")\n        if prefix and not output_name.startswith(prefix):\n            output_name = prefix + output_name\n        output_path = os.path.join(work_dir, output_name)
+        prefix = await settings.get_value(uid, "filename_prefix", "")
+        if prefix and not output_name.startswith(prefix):
+            output_name = prefix + output_name
+        output_path = os.path.join(work_dir, output_name)
         await status.edit_text("Merging video parts…")
         await merge_videos(local_files, output_path)
         caption = await settings.get_value(uid, "caption")
@@ -435,6 +458,25 @@ async def rename_file_handler(client, message):
     if not media:
         return
     original_name = getattr(media, "file_name", None) or f"zura_file_{media.file_unique_id}"
+    style = await settings.get_value(user_id, "rename_style", "manual")
+    if style == "credit":
+        # Remove a leading @credit token (e.g. @ASKOREANDRAMA) and trim whitespace.
+        cleaned = re.sub(r"^@[^\\s]+\\s*", "", original_name).strip()
+        if not cleaned:
+            cleaned = original_name
+        prefix = await settings.get_value(user_id, "filename_prefix", "")
+        if prefix and not cleaned.startswith(prefix):
+            cleaned = prefix + cleaned
+        PENDING_RENAMES[user_id] = {"message": message, "original_name": original_name, "new_name": cleaned}
+        prompt = await message.reply_text("Automatic rename prepared\\n\\nFile Name: " + cleaned + "\\n\\nSelect output type:")
+        await telegram_api("editMessageReplyMarkup", {
+            "chat_id": prompt.chat.id, "message_id": prompt.id,
+            "reply_markup": {"inline_keyboard": [
+                [{"text": "⭐ 📁 Document", "callback_data": "zura:output:document", "style": "primary"}],
+                [{"text": "🎥 Video", "callback_data": "zura:output:video", "style": "success"}]
+            ]}
+        })
+        return
     PENDING_RENAMES[user_id] = {"message": message, "original_name": original_name}
     await message.reply_text(
         "Please Enter New Filename…\n\nOld File Name :- " + original_name +
@@ -458,7 +500,10 @@ async def rename_filename_input_handler(client, message):
         return await message.reply_text("Filename is too long. Please use a shorter name.")
     if any(ch in raw_name for ch in ("\0", "\n", "\r")):
         return await message.reply_text("Filename contains invalid characters.")
-    prefix = await settings.get_value(message.from_user.id, "filename_prefix", "")\n    if prefix and not raw_name.startswith(prefix):\n        raw_name = prefix + raw_name\n    pending["new_name"] = raw_name
+    prefix = await settings.get_value(message.from_user.id, "filename_prefix", "")
+    if prefix and not raw_name.startswith(prefix):
+        raw_name = prefix + raw_name
+    pending["new_name"] = raw_name
     prompt = await message.reply_text(
         "Select The Output File Type\n\nFile Name :- " + raw_name
     )
