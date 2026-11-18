@@ -79,6 +79,7 @@ async def start_handler(client, message):
         "/mymetadata — show metadata\n/delmetadata — clear metadata\n"
         "/setcaption text — set output caption\n/delcaption — remove custom caption\n"
         "/setthumb — reply to a photo with this command\n/delthumb — remove thumbnail\n"
+        "/set_prefix text — add prefix to renamed filenames\n/my_prefix — show prefix\n/del_prefix — remove prefix\n"
         "/merge — start merging video parts\n/done — merge and upload\n/cancel — cancel job or merge mode"
     )
 
@@ -191,6 +192,24 @@ async def delete_thumb_handler(client, message):
     await settings.set_value(message.from_user.id, "thumb_file_id", None)
     await message.reply_text("Custom thumbnail removed.")
 
+@app.on_message(filters.private & filters.command("set_prefix"))
+async def set_prefix_handler(client, message):
+    prefix = message.text.split(maxsplit=1)[1].strip() if len(message.command) > 1 else ""
+    if not prefix:
+        return await message.reply_text("Usage: /set_prefix text\\nExample: /set_prefix @ZuraFlix")
+    await settings.set_value(message.from_user.id, "filename_prefix", prefix)
+    await message.reply_text(f"Filename prefix saved: {prefix}")
+
+@app.on_message(filters.private & filters.command("my_prefix"))
+async def my_prefix_handler(client, message):
+    prefix = await settings.get_value(message.from_user.id, "filename_prefix", "")
+    await message.reply_text(f"Current prefix: {prefix or 'None'}")
+
+@app.on_message(filters.private & filters.command("del_prefix"))
+async def del_prefix_handler(client, message):
+    await settings.set_value(message.from_user.id, "filename_prefix", "")
+    await message.reply_text("Filename prefix removed.")
+
 @app.on_message(filters.private & filters.command("cancel"))
 async def cancel_handler(client, message):
     uid = message.from_user.id
@@ -245,7 +264,7 @@ async def merge_done_handler(client, message):
         ext = ext or ".mkv"
         template = await settings.get_value(uid, "rename_template") or "{filename}.{ext}"
         output_name = build_filename(template, f"{stem}_merged{ext}", uid)
-        output_path = os.path.join(work_dir, output_name)
+        prefix = await settings.get_value(uid, "filename_prefix", "")\n        if prefix and not output_name.startswith(prefix):\n            output_name = prefix + output_name\n        output_path = os.path.join(work_dir, output_name)
         await status.edit_text("Merging video parts…")
         await merge_videos(local_files, output_path)
         caption = await settings.get_value(uid, "caption")
@@ -439,7 +458,7 @@ async def rename_filename_input_handler(client, message):
         return await message.reply_text("Filename is too long. Please use a shorter name.")
     if any(ch in raw_name for ch in ("\0", "\n", "\r")):
         return await message.reply_text("Filename contains invalid characters.")
-    pending["new_name"] = raw_name
+    prefix = await settings.get_value(message.from_user.id, "filename_prefix", "")\n    if prefix and not raw_name.startswith(prefix):\n        raw_name = prefix + raw_name\n    pending["new_name"] = raw_name
     prompt = await message.reply_text(
         "Select The Output File Type\n\nFile Name :- " + raw_name
     )
