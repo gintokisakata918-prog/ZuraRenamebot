@@ -44,6 +44,18 @@ def register_settings_handlers(app, Config, settings):
         rows.append([button("🧹 Clear all", "zset:meta_clear", "danger"), button("⬅ Back", "zset:home")])
         return keyboard(rows)
 
+    async def show_style(chat_id, message_id):
+        current = await settings.get_value(chat_id, "rename_style", "manual")
+        markup = keyboard([
+            [button(("✅ " if current == "manual" else "▫️ ") + "Style 1 · Manual rename", "zset:style_manual", "success" if current == "manual" else "primary")],
+            [button(("✅ " if current == "credit" else "▫️ ") + "Style 2 · Remove @credit automatically", "zset:style_credit", "success" if current == "credit" else "primary")],
+            [button("⬅ Back", "zset:home")]
+        ])
+        text = ("🔀 Rᴇɴᴀᴍᴇ Sᴛʏʟᴇ\n\nChoose one style. Your selection is saved and used for incoming files.\n\n"
+                "Style 1: You manually enter the filename.\n"
+                "Style 2: Leading @credit is removed automatically; your prefix is applied.")
+        await api("editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": text, "reply_markup": markup})
+
     async def show_metadata(chat_id, message_id):
         enabled = await settings.get_value(chat_id, "meta_enabled", False)
         markup = await metadata_markup(chat_id)
@@ -57,10 +69,11 @@ def register_settings_handlers(app, Config, settings):
 
     def home_markup(meta_enabled):
         return keyboard([
-            [button("📝 Rename Format", "zset:format"), button("🏷 Caption", "zset:caption")],
-            [button("🖼 Thumbnail", "zset:thumb"), button("Mᴇᴛᴀᴅᴀᴛᴀ ▹", "zset:metadata")],
-            [button("🔄 Text Replace", "zset:replace"), button("🔐 Archive Tool", "zset:archive")],
-            [button("📊 My Settings", "zset:show", "success"), button("✖ Close", "zset:close", "danger")]
+            [button("📝 Rename Format", "zset:format"), button("🔀 Rename Style", "zset:style")],
+            [button("🏷 Caption", "zset:caption"), button("🖼 Thumbnail", "zset:thumb")],
+            [button("Mᴇᴛᴀᴅᴀᴛᴀ ▹", "zset:metadata"), button("🔄 Text Replace", "zset:replace")],
+            [button("🔐 Archive Tool", "zset:archive"), button("📊 My Settings", "zset:show", "success")],
+            [button("✖ Close", "zset:close", "danger")]
         ])
 
     async def show_home(chat_id, message_id=None):
@@ -98,6 +111,16 @@ def register_settings_handlers(app, Config, settings):
                 pending.pop(uid, None)
                 await show_home(chat_id, message_id)
                 await query.answer()
+                return
+            if action == "style":
+                await show_style(uid, message_id)
+                await query.answer()
+                return
+            if action in ("style_manual", "style_credit"):
+                selected = "manual" if action == "style_manual" else "credit"
+                await settings.set_value(uid, "rename_style", selected)
+                await show_style(uid, message_id)
+                await query.answer("Rename style saved ✓")
                 return
             if action == "metadata":
                 await show_metadata(uid, message_id)
