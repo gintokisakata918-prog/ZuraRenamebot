@@ -79,8 +79,6 @@ async def start_handler(client, message):
         "/mymetadata — show metadata\n/delmetadata — clear metadata\n"
         "/setcaption text — set output caption\n/delcaption — remove custom caption\n"
         "/setthumb — reply to a photo with this command\n/delthumb — remove thumbnail\n"
-        "/setreplace OLD | NEW — replace text in filenames\\n"
-        "/myreplace — show replacement\\n/delreplace — remove replacement\\n"
         "/merge — start merging video parts\n/done — merge and upload\n/cancel — cancel job or merge mode"
     )
 
@@ -193,32 +191,6 @@ async def delete_thumb_handler(client, message):
     await settings.set_value(message.from_user.id, "thumb_file_id", None)
     await message.reply_text("Custom thumbnail removed.")
 
-@app.on_message(filters.private & filters.command("setreplace"))
-async def set_replace_handler(client, message):
-    raw = message.text.split(maxsplit=1)[1] if len(message.command) > 1 else ""
-    if "|" not in raw:
-        return await message.reply_text("Usage: /setreplace OLD TEXT | NEW TEXT\\nExample: /setreplace @ASKOREANDRAMA | @MYCHANNEL")
-    old, new = (part.strip() for part in raw.split("|", 1))
-    if not old:
-        return await message.reply_text("The text to find cannot be empty.")
-    await settings.set_value(message.from_user.id, "replace_from", old)
-    await settings.set_value(message.from_user.id, "replace_to", new)
-    await message.reply_text(f"Filename replacement saved:\\n{old} → {new}\\nIt will apply to matching filenames you send.")
-
-@app.on_message(filters.private & filters.command("myreplace"))
-async def my_replace_handler(client, message):
-    old = await settings.get_value(message.from_user.id, "replace_from")
-    new = await settings.get_value(message.from_user.id, "replace_to", "")
-    if not old:
-        return await message.reply_text("No filename replacement is set. Use /setreplace OLD | NEW.")
-    await message.reply_text(f"Current replacement:\\n{old} → {new}")
-
-@app.on_message(filters.private & filters.command("delreplace"))
-async def delete_replace_handler(client, message):
-    await settings.set_value(message.from_user.id, "replace_from", None)
-    await settings.set_value(message.from_user.id, "replace_to", None)
-    await message.reply_text("Filename replacement removed.")
-
 @app.on_message(filters.private & filters.command("cancel"))
 async def cancel_handler(client, message):
     uid = message.from_user.id
@@ -273,12 +245,6 @@ async def merge_done_handler(client, message):
         ext = ext or ".mkv"
         template = await settings.get_value(uid, "rename_template") or "{filename}.{ext}"
         output_name = build_filename(template, f"{stem}_merged{ext}", uid)
-        replace_from = await settings.get_value(uid, "replace_from")
-        replace_to = await settings.get_value(uid, "replace_to", "")
-        if replace_from:
-            import re
-            base, suffix = os.path.splitext(output_name)
-            output_name = re.sub(re.escape(replace_from), lambda _: replace_to or "", base, flags=re.IGNORECASE).strip() + suffix
         output_path = os.path.join(work_dir, output_name)
         await status.edit_text("Merging video parts…")
         await merge_videos(local_files, output_path)
@@ -362,10 +328,7 @@ async def process_rename_file(client, message, new_name, output_type):
         else:
             # Keep the incoming caption; if none exists, show the renamed filename as the video caption.
             caption = (message.caption or "").strip() or new_name
-        replace_from = await settings.get_value(user_id, "replace_from")
-        replace_to = await settings.get_value(user_id, "replace_to", "")
-        if replace_from and caption:
-            caption = __import__("re").sub(__import__("re").escape(replace_from), lambda _: replace_to or "", caption, flags=__import__("re").IGNORECASE)
+
 
         meta_enabled = await settings.get_value(user_id, "meta_enabled", False)
         metadata_values = {
