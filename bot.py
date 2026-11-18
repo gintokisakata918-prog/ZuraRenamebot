@@ -373,15 +373,14 @@ async def process_rename_file(client, message, new_name, output_type):
 
 
         meta_enabled = await settings.get_value(user_id, "meta_enabled", False)
-        metadata_values = {
-            "title": await settings.get_value(user_id, "meta_title"),
-            "author": await settings.get_value(user_id, "meta_author"),
-            "artist": await settings.get_value(user_id, "meta_artist"),
-            "audio": await settings.get_value(user_id, "meta_audio"),
-            "subtitle": await settings.get_value(user_id, "meta_subtitle"),
-            "video": await settings.get_value(user_id, "meta_video"),
-        }
-        if meta_enabled and any(metadata_values.values()):
+        metadata_values = {}
+        for field in ("title", "author", "artist", "audio", "subtitle", "video"):
+            value = await settings.get_value(user_id, "meta_" + field)
+            field_enabled = await settings.get_value(user_id, "meta_" + field + "_enabled", bool(value))
+            # Legacy global /metadata ON remains supported.
+            if value and (field_enabled or meta_enabled):
+                metadata_values[field] = value
+        if metadata_values:
             if shutil.which("ffmpeg"):
                 from media import write_metadata
                 metadata_path = os.path.join(work_dir, "metadata_" + new_name)
